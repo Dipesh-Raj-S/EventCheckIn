@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================================
+   Global Styles — Event Check-In
+   ======================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================================
+   Custom Utilities
+   ======================================================== */
+
+@layer components {
+  /* Card with subtle glass effect */
+  .card {
+    @apply bg-surface-800/60 backdrop-blur-sm border border-surface-700/50
+           rounded-2xl p-6 shadow-lg shadow-black/10
+           transition-all duration-200 ease-out;
+  }
+
+  .card:hover {
+    @apply border-surface-600/60 shadow-xl shadow-black/20;
+  }
+
+  /* Primary gradient button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           bg-gradient-to-r from-primary-600 to-primary-500
+           text-white font-medium px-5 py-2.5 rounded-xl
+           shadow-md shadow-primary-900/30
+           hover:from-primary-500 hover:to-primary-400
+           hover:shadow-lg hover:shadow-primary-900/40
+           active:scale-[0.98]
+           transition-all duration-150 ease-out
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  /* Ghost / outline button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           bg-transparent border border-surface-600
+           text-surface-200 font-medium px-5 py-2.5 rounded-xl
+           hover:bg-surface-700/50 hover:border-surface-500
+           active:scale-[0.98]
+           transition-all duration-150 ease-out;
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2
+           bg-gradient-to-r from-red-600 to-red-500
+           text-white font-medium px-5 py-2.5 rounded-xl
+           shadow-md shadow-red-900/30
+           hover:from-red-500 hover:to-red-400
+           active:scale-[0.98]
+           transition-all duration-150 ease-out;
+  }
+
+  /* Form input */
+  .input {
+    @apply w-full bg-surface-800 border border-surface-600
+           text-surface-100 placeholder-surface-400
+           px-4 py-2.5 rounded-xl
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
+           transition-all duration-150;
+  }
+
+  /* Select */
+  .select {
+    @apply w-full bg-surface-800 border border-surface-600
+           text-surface-100
+           px-4 py-2.5 rounded-xl appearance-none
+           focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500
+           transition-all duration-150;
+  }
+
+  /* Label */
+  .label {
+    @apply block text-sm font-medium text-surface-300 mb-1.5;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-active {
+    @apply badge bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+
+  .badge-used {
+    @apply badge bg-surface-600/30 text-surface-400 border border-surface-500/30;
+  }
+
+  .badge-organizer {
+    @apply badge bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  }
+
+  .badge-attendee {
+    @apply badge bg-sky-500/20 text-sky-400 border border-sky-500/30;
+  }
+
+  /* Page container */
+  .page-container {
+    @apply max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8;
+  }
+
+  /* Error message */
+  .error-message {
+    @apply bg-red-500/10 border border-red-500/30 text-red-400
+           px-4 py-3 rounded-xl text-sm;
+  }
+
+  /* Success message */
+  .success-message {
+    @apply bg-emerald-500/10 border border-emerald-500/30 text-emerald-400
+           px-4 py-3 rounded-xl text-sm;
+  }
+}
+
+/* ========================================================
+   Scrollbar Styling
+   ======================================================== */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
