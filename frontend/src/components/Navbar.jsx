@@ -46,6 +46,18 @@ export default function Navbar() {
               </Link>
             )}
 
+            {isOrganizer && (
+              <Link
+                to="/scanner"
+                className="px-3 py-2 rounded-lg text-sm font-medium text-surface-300 hover:text-white hover:bg-surface-700/50 transition-all flex items-center gap-1.5"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+                </svg>
+                Scan
+              </Link>
+            )}
+
             {/* User info + logout */}
             <div className="flex items-center gap-3 ml-4 pl-4 border-l border-surface-700/50">
               <div className="text-right hidden sm:block">

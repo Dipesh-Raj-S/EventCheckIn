@@ -116,6 +116,9 @@ class Registration(db.Model):
     # Relationships
     event = db.relationship("Event", back_populates="registrations")
     user = db.relationship("User", back_populates="registrations")
+    checkin = db.relationship(
+        "CheckIn", back_populates="registration", uselist=False
+    )
 
     def to_dict(self):
         return {
@@ -125,4 +128,42 @@ class Registration(db.Model):
             "qr_token": self.qr_token,
             "token_status": self.token_status.value,
             "created_at": self.created_at.isoformat(),
+        }
+
+
+class CheckIn(db.Model):
+    """
+    Records a single check-in scan.
+
+    One-to-one with Registration — the UNIQUE constraint on registration_id
+    is the belt-and-suspenders safety net on top of the SELECT ... FOR UPDATE
+    row lock in the check-in endpoint.
+    """
+
+    __tablename__ = "checkins"
+
+    id = db.Column(db.Integer, primary_key=True)
+    registration_id = db.Column(
+        db.Integer,
+        db.ForeignKey("registrations.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    station_id = db.Column(db.String(100), nullable=False)
+    checked_in_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    # Relationships
+    registration = db.relationship("Registration", back_populates="checkin")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "registration_id": self.registration_id,
+            "station_id": self.station_id,
+            "checked_in_at": self.checked_in_at.isoformat(),
         }

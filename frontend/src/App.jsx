@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage';
 import EventsPage from './pages/EventsPage';
 import EventDetailPage from './pages/EventDetailPage';
 import MyRegistrationsPage from './pages/MyRegistrationsPage';
+import ScannerPage from './pages/ScannerPage';
 
 export default function App() {
   return (
@@ -43,6 +44,16 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRole="attendee">
                   <MyRegistrationsPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Organizer-only route (server also enforces via @role_required) */}
+            <Route
+              path="/scanner"
+              element={
+                <ProtectedRoute requiredRole="organizer">
+                  <ScannerPage />
                 </ProtectedRoute>
               }
             />
