@@ -188,3 +188,69 @@ def event_dashboard(event_id):
         "event": event.to_dict(),
         "checkins": checkins_data
     }), 200
+
+@events_bp.route("/<int:event_id>/export", methods=["GET"])
+@role_required("organizer")
+def export_event_attendees(event_id):
+    """
+    Export attendee list and check-in timestamps as CSV. Organizer only, owner only.
+    """
+    import csv
+    import io
+    import re
+    from flask import Response
+    from app.models import CheckIn, Registration, User
+
+    identity = int(get_jwt_identity())
+    event = Event.query.get(event_id)
+
+    if not event:
+        return jsonify({"error": "Event not found"}), 404
+
+    if event.organizer_id != identity:
+        return (
+            jsonify({"error": "Forbidden: you can only export your own events"}),
+            403,
+        )
+
+    # Query Registrations left join CheckIn and inner join User
+    results = (
+        db.session.query(Registration, CheckIn, User)
+        .outerjoin(CheckIn, Registration.id == CheckIn.registration_id)
+        .join(User, Registration.user_id == User.id)
+        .filter(Registration.event_id == event_id)
+        .order_by(Registration.created_at.asc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    # Write headers
+    writer.writerow(["Name", "Email", "Registration Time", "Status", "Check-in Time", "Station"])
+
+    for reg, checkin, user in results:
+        name = user.email # Using email as fallback for name
+        email = user.email
+        reg_time = reg.created_at.isoformat() if reg.created_at else ""
+        
+        if checkin:
+            status = "Checked In"
+            ci_time = checkin.checked_in_at.isoformat() if checkin.checked_in_at else ""
+            station = checkin.station_id or ""
+        else:
+            status = "Not Checked In"
+            ci_time = ""
+            station = ""
+            
+        writer.writerow([name, email, reg_time, status, ci_time, station])
+
+    # Slugify event name for filename
+    slug = re.sub(r'[^a-zA-Z0-9]+', '_', event.name).strip('_').lower()
+    filename = f"{slug}_attendees.csv"
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+

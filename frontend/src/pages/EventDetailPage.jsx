@@ -21,6 +21,9 @@ export default function EventDetailPage() {
   const [conflicts, setConflicts] = useState([]);
   const [loadingConflicts, setLoadingConflicts] = useState(false);
 
+  // Organizer: export
+  const [exporting, setExporting] = useState(false);
+
   // Attendee: registration status
   const [myRegistration, setMyRegistration] = useState(null);
   const [registering, setRegistering] = useState(false);
@@ -91,6 +94,44 @@ export default function EventDetailPage() {
       // Ignore
     }
   }, [id, isAttendee]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get(`/events/${id}/export`, {
+        responseType: 'blob', // Important for file download
+      });
+      
+      // Create a blob from the response and trigger download
+      const blob = new Blob([res.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extract filename from Content-Disposition header if possible, otherwise fallback
+      let filename = `${event.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}_attendees.csv`;
+      const contentDisposition = res.headers['content-disposition'];
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          filename = match[1];
+        }
+      }
+      
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Failed to export attendees. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     fetchEvent();
@@ -375,12 +416,30 @@ export default function EventDetailPage() {
       {isOwner && (
         <div className="space-y-6">
           <div className="card">
-            <h2 className="text-lg font-semibold text-white mb-4">
-              Registrations
-              <span className="text-surface-400 font-normal text-sm ml-2">
-                ({registrations.length})
-              </span>
-            </h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+              <h2 className="text-lg font-semibold text-white">
+                Registrations
+                <span className="text-surface-400 font-normal text-sm ml-2">
+                  ({registrations.length})
+                </span>
+              </h2>
+              
+              <button 
+                onClick={handleExport} 
+                disabled={exporting || registrations.length === 0}
+                className="btn-ghost text-sm px-3 py-1.5 flex items-center gap-1.5 whitespace-nowrap"
+                id="export-csv-btn"
+              >
+                {exporting ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-surface-300 border-t-transparent" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                )}
+                {exporting ? 'Exporting...' : 'Export CSV'}
+              </button>
+            </div>
 
             {loadingRegs ? (
               <div className="flex justify-center py-8">
