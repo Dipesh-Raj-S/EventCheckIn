@@ -23,12 +23,16 @@ def create_app(config_name=None):
     )
 
     # Initialize extensions
-    from app.extensions import cors, db, jwt, migrate
+    from app.extensions import cors, db, jwt, migrate, socketio
 
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
+    socketio.init_app(app)
+
+    # Import socket events
+    from app import sockets  # noqa: F401
 
     # Import models so Flask-Migrate can detect them
     from app import models  # noqa: F401

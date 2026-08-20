@@ -4,10 +4,14 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+
+import EventDashboardPage from "./pages/EventDashboardPage";
 import EventsPage from './pages/EventsPage';
 import EventDetailPage from './pages/EventDetailPage';
+
 import MyRegistrationsPage from './pages/MyRegistrationsPage';
 import ScannerPage from './pages/ScannerPage';
+
 
 export default function App() {
   return (
@@ -54,6 +58,15 @@ export default function App() {
               element={
                 <ProtectedRoute requiredRole="organizer">
                   <ScannerPage />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/events/:id/dashboard"
+              element={
+                <ProtectedRoute requiredRole="organizer">
+                  <EventDashboardPage />
                 </ProtectedRoute>
               }
             />

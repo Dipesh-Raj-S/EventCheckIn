@@ -140,3 +140,51 @@ def delete_event(event_id):
     db.session.commit()
 
     return jsonify({"message": "Event deleted"}), 200
+
+
+@events_bp.route("/<int:event_id>/dashboard", methods=["GET"])
+@role_required("organizer")
+def event_dashboard(event_id):
+    """
+    Get the live dashboard state for an event. Organizer only, owner only.
+    Returns event info and checked-in attendees.
+    """
+    identity = int(get_jwt_identity())
+    event = Event.query.get(event_id)
+
+    if not event:
+        return jsonify({"error": "Event not found"}), 404
+
+    if event.organizer_id != identity:
+        return (
+            jsonify({"error": "Forbidden: you can only view your own events"}),
+            403,
+        )
+
+    # Fetch checkins joined with registration and user
+    from app.models import CheckIn, Registration, User
+    checkins = (
+        db.session.query(CheckIn, Registration, User)
+        .join(Registration, CheckIn.registration_id == Registration.id)
+        .join(User, Registration.user_id == User.id)
+        .filter(Registration.event_id == event_id)
+        .order_by(CheckIn.checked_in_at.desc())
+        .all()
+    )
+
+    checkins_data = []
+    for ci, reg, user in checkins:
+        checkins_data.append({
+            "registration_id": reg.id,
+            "attendee": {
+                "name": user.email, # Fallback to email as name is not in schema
+                "email": user.email
+            },
+            "checked_in_at": ci.checked_in_at.isoformat(),
+            "station_id": ci.station_id
+        })
+
+    return jsonify({
+        "event": event.to_dict(),
+        "checkins": checkins_data
+    }), 200

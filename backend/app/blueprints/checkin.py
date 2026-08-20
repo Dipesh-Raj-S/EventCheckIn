@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.decorators import role_required
-from app.extensions import db
+from app.extensions import db, socketio
 from app.models import CheckIn, CheckInConflict, Event, Registration, TokenStatus
 
 checkin_bp = Blueprint("checkin", __name__)
@@ -84,7 +84,7 @@ def _process_checkin(qr_token, station_id, organizer_id, client_scan_id=None,
             "ok": False,
             "reason": "invalid_qr",
             "status_code": 404,
-            "detail": {"error": "Invalid QR code"},
+            "detail": {"status": "invalid"},
         }
 
     # --- Authorization: organizer must own the event ---
@@ -112,18 +112,18 @@ def _process_checkin(qr_token, station_id, organizer_id, client_scan_id=None,
             "reason": "already_checked_in",
             "status_code": 409,
             "detail": {
-                "error": "Already checked in",
-                "checked_in_at": (
-                    existing_checkin.checked_in_at.isoformat()
-                    if existing_checkin
-                    else None
-                ),
-                "existing_station_id": (
-                    existing_checkin.station_id if existing_checkin else None
-                ),
+                "status": "conflict",
+                "attendee": {
+                    "email": registration.user.email
+                },
+                "original_checkin": {
+                    "checked_in_at": existing_checkin.checked_in_at.isoformat() if existing_checkin else None,
+                    "station_id": existing_checkin.station_id if existing_checkin else None
+                }
             },
             "registration": registration,
             "event": event,
+            "existing_checkin": existing_checkin
         }
 
     # --- 3. Flip token status ---
@@ -158,18 +158,14 @@ def _process_checkin(qr_token, station_id, organizer_id, client_scan_id=None,
 def _success_response(result):
     """Build the standard success JSON from a _process_checkin result."""
     reg = result["registration"]
-    evt = result["event"]
     ci = result["checkin"]
     return {
-        "status": "checked_in",
+        "status": "success",
         "attendee": {
-            "id": reg.user_id,
             "email": reg.user.email,
         },
-        "event": evt.to_dict(),
         "checked_in_at": ci.checked_in_at.isoformat(),
         "station_id": ci.station_id,
-        "checkin": ci.to_dict(),
     }
 
 
@@ -215,6 +211,21 @@ def checkin():
         # Refresh to get generated ids
         db.session.refresh(result["checkin"])
         db.session.refresh(result["event"])
+        
+        # Emit WebSocket update for live dashboard
+        socketio.emit("checkin_update", {
+            "event_id": result["event"].id,
+            "checked_in_count": result["event"].checked_in_count,
+            "checkin": {
+                "registration_id": result["registration"].id,
+                "attendee": {
+                    "name": result["registration"].user.email, # Fallback to email as name is not in schema
+                    "email": result["registration"].user.email
+                },
+                "station_id": result["checkin"].station_id,
+                "checked_in_at": result["checkin"].checked_in_at.isoformat()
+            }
+        }, room=f"event_{result['event'].id}")
 
         return jsonify(_success_response(result)), 200
 
@@ -238,7 +249,7 @@ def checkin():
                 })), 200
 
         return (
-            jsonify({"error": "Already checked in", "checked_in_at": None}),
+            jsonify({"status": "conflict", "attendee": {"email": ""}, "original_checkin": {"checked_in_at": None, "station_id": None}}),
             409,
         )
 
@@ -327,14 +338,12 @@ def checkin_sync():
                     results.append({
                         "client_scan_id": client_scan_id,
                         "status": "conflict",
-                        "reason": "already_checked_in",
-                        "actual_checkin": {
-                            "station_id": result["detail"].get(
-                                "existing_station_id"
-                            ),
-                            "checked_in_at": result["detail"].get(
-                                "checked_in_at"
-                            ),
+                        "attendee": {
+                            "email": result["registration"].user.email
+                        },
+                        "original_checkin": {
+                            "station_id": result["detail"]["original_checkin"]["station_id"],
+                            "checked_in_at": result["detail"]["original_checkin"]["checked_in_at"],
                         },
                     })
                     continue
@@ -342,7 +351,7 @@ def checkin_sync():
                     # invalid_qr, forbidden, etc.
                     results.append({
                         "client_scan_id": client_scan_id,
-                        "status": "error",
+                        "status": result["detail"].get("status", "error"),
                         "error": result["detail"].get("error", "Unknown error"),
                     })
                     continue
@@ -351,11 +360,32 @@ def checkin_sync():
 
             ci = result["checkin"]
             db.session.refresh(ci)
+            db.session.refresh(result["event"])
+            
+            if status == "synced":
+                # Emit WebSocket update for live dashboard
+                socketio.emit("checkin_update", {
+                    "event_id": result["event"].id,
+                    "checked_in_count": result["event"].checked_in_count,
+                    "checkin": {
+                        "registration_id": result["registration"].id,
+                        "attendee": {
+                            "name": result["registration"].user.email,
+                            "email": result["registration"].user.email
+                        },
+                        "station_id": ci.station_id,
+                        "checked_in_at": ci.checked_in_at.isoformat()
+                    }
+                }, room=f"event_{result['event'].id}")
 
             results.append({
                 "client_scan_id": client_scan_id,
                 "status": status,
+                "attendee": {
+                    "email": result["registration"].user.email
+                },
                 "checked_in_at": ci.checked_in_at.isoformat(),
+                "station_id": ci.station_id
             })
 
         except IntegrityError:
@@ -371,7 +401,11 @@ def checkin_sync():
                     results.append({
                         "client_scan_id": client_scan_id,
                         "status": "already_synced",
+                        "attendee": {
+                            "email": existing.registration.user.email
+                        },
                         "checked_in_at": existing.checked_in_at.isoformat(),
+                        "station_id": existing.station_id
                     })
                     continue
 
