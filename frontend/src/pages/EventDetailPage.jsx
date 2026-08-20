@@ -17,6 +17,10 @@ export default function EventDetailPage() {
   const [registrations, setRegistrations] = useState([]);
   const [loadingRegs, setLoadingRegs] = useState(false);
 
+  // Organizer: conflicts list
+  const [conflicts, setConflicts] = useState([]);
+  const [loadingConflicts, setLoadingConflicts] = useState(false);
+
   // Attendee: registration status
   const [myRegistration, setMyRegistration] = useState(null);
   const [registering, setRegistering] = useState(false);
@@ -62,6 +66,19 @@ export default function EventDetailPage() {
     }
   }, [id, isOrganizer]);
 
+  const fetchConflicts = useCallback(async () => {
+    if (!isOrganizer) return;
+    setLoadingConflicts(true);
+    try {
+      const res = await api.get(`/events/${id}/conflicts`);
+      setConflicts(res.data.conflicts);
+    } catch {
+      // Will get 403 if not owner
+    } finally {
+      setLoadingConflicts(false);
+    }
+  }, [id, isOrganizer]);
+
   const fetchMyRegistration = useCallback(async () => {
     if (!isAttendee) return;
     try {
@@ -83,8 +100,11 @@ export default function EventDetailPage() {
     if (event) {
       fetchRegistrations();
       fetchMyRegistration();
+      if (isOwner) {
+        fetchConflicts();
+      }
     }
-  }, [event, fetchRegistrations, fetchMyRegistration]);
+  }, [event, fetchRegistrations, fetchMyRegistration, fetchConflicts, isOwner]);
 
   const handleRegister = async () => {
     setRegisterError('');
@@ -343,35 +363,82 @@ export default function EventDetailPage() {
 
       {/* Organizer: registrations list */}
       {isOwner && (
-        <div className="card">
-          <h2 className="text-lg font-semibold text-white mb-4">
-            Registrations
-            <span className="text-surface-400 font-normal text-sm ml-2">
-              ({registrations.length})
-            </span>
-          </h2>
+        <div className="space-y-6">
+          <div className="card">
+            <h2 className="text-lg font-semibold text-white mb-4">
+              Registrations
+              <span className="text-surface-400 font-normal text-sm ml-2">
+                ({registrations.length})
+              </span>
+            </h2>
 
-          {loadingRegs ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary-500 border-t-transparent" />
-            </div>
-          ) : registrations.length === 0 ? (
-            <p className="text-surface-400 text-center py-8">No registrations yet</p>
-          ) : (
-            <div className="divide-y divide-surface-700/50">
-              {registrations.map((reg) => (
-                <div key={reg.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                  <div>
-                    <p className="text-surface-200 font-medium">{reg.user_email}</p>
-                    <p className="text-xs text-surface-500 font-mono">{reg.qr_token}</p>
+            {loadingRegs ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary-500 border-t-transparent" />
+              </div>
+            ) : registrations.length === 0 ? (
+              <p className="text-surface-400 text-center py-8">No registrations yet</p>
+            ) : (
+              <div className="divide-y divide-surface-700/50 max-h-96 overflow-y-auto pr-2">
+                {registrations.map((reg) => (
+                  <div key={reg.id} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
+                    <div>
+                      <p className="text-surface-200 font-medium">{reg.user_email}</p>
+                      <p className="text-xs text-surface-500 font-mono">{reg.qr_token}</p>
+                    </div>
+                    <span className={reg.token_status === 'active' ? 'badge-active' : 'badge-used'}>
+                      {reg.token_status}
+                    </span>
                   </div>
-                  <span className={reg.token_status === 'active' ? 'badge-active' : 'badge-used'}>
-                    {reg.token_status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Organizer: conflicts list */}
+          <div className="card border-amber-500/20 bg-amber-500/5">
+            <h2 className="text-lg font-semibold text-amber-400 mb-4 flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Sync Conflicts
+              <span className="text-amber-500/70 font-normal text-sm ml-1">
+                ({conflicts.length})
+              </span>
+            </h2>
+            
+            <p className="text-sm text-surface-400 mb-4">
+              Conflicts happen when a QR code was scanned offline, but the attendee was already checked in (by another station or earlier sync). The original check-in is kept; these are logged here for auditing.
+            </p>
+
+            {loadingConflicts ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-500 border-t-transparent" />
+              </div>
+            ) : conflicts.length === 0 ? (
+              <p className="text-surface-400 text-center py-8">No conflicts recorded.</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                {conflicts.map((conflict) => (
+                  <div key={conflict.id} className="p-3 bg-surface-800/80 rounded-lg border border-surface-700/50">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-surface-200 font-medium">{conflict.attendee_email}</p>
+                      <span className="text-xs font-mono text-surface-500">Scan ID: {conflict.client_scan_id?.split('-')[0]}...</span>
+                    </div>
+                    <div className="text-sm text-surface-400 space-y-1">
+                      <p>
+                        <span className="text-surface-500">Attempted by:</span> {conflict.station_id} 
+                        {conflict.device_scanned_at && ` at ${new Date(conflict.device_scanned_at).toLocaleTimeString()}`}
+                      </p>
+                      <p className="text-amber-400/80 text-xs">
+                        {conflict.reason === 'already_checked_in' ? 'Rejected: Attendee was already checked in.' : conflict.reason}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

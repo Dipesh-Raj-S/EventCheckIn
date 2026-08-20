@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { get, set, update } from 'idb-keyval';
 import api from '../api';
 
 // Generate a stable station_id per browser session
@@ -11,15 +12,105 @@ const STATION_ID =
     return id;
   })();
 
+const IDB_KEY_PENDING = 'offline_scans_pending';
+const IDB_KEY_HISTORY = 'offline_scans_history';
+
 export default function ScannerPage() {
   const [scanResult, setScanResult] = useState(null); // { type, data }
   const [scanning, setScanning] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [processing, setProcessing] = useState(false);
+  
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncHistory, setSyncHistory] = useState([]); // Array of { client_scan_id, status, reason, etc. }
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const scannerRef = useRef(null);
   const containerRef = useRef(null);
   const processingRef = useRef(false); // lock to prevent double-submit
 
+  // --- Offline/Online Tracking ---
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // --- Load IDB State on Mount ---
+  useEffect(() => {
+    const loadIDB = async () => {
+      const pending = await get(IDB_KEY_PENDING) || [];
+      setPendingCount(pending.length);
+      const history = await get(IDB_KEY_HISTORY) || [];
+      setSyncHistory(history);
+    };
+    loadIDB();
+  }, []);
+
+  // --- Sync Logic ---
+  const syncPendingScans = useCallback(async () => {
+    if (!isOnline || isSyncing) return;
+    
+    const pending = await get(IDB_KEY_PENDING) || [];
+    if (pending.length === 0) return;
+
+    setIsSyncing(true);
+    try {
+      // POST to /api/checkin/sync
+      const res = await api.post('/checkin/sync', { scans: pending });
+      const results = res.data.results || [];
+      
+      // Clear pending since they've been processed
+      await set(IDB_KEY_PENDING, []);
+      setPendingCount(0);
+
+      // Add to history
+      const newHistory = results.map(r => ({
+        client_scan_id: r.client_scan_id,
+        status: r.status,
+        reason: r.reason,
+        checked_in_at: r.checked_in_at || r.actual_checkin?.checked_in_at,
+        station_id: r.actual_checkin?.station_id,
+        synced_at: new Date().toISOString()
+      }));
+
+      await update(IDB_KEY_HISTORY, (old = []) => [...newHistory, ...old].slice(0, 50)); // Keep last 50
+      setSyncHistory(prev => [...newHistory, ...prev].slice(0, 50));
+      
+    } catch (err) {
+      console.error('Failed to sync offline scans:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [isOnline, isSyncing]);
+
+  // Trigger sync when coming online
+  useEffect(() => {
+    if (isOnline) {
+      syncPendingScans();
+    }
+  }, [isOnline, syncPendingScans]);
+
+  // Polling sync (every 15s if pending items exist and online)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (pendingCount > 0 && isOnline) {
+        syncPendingScans();
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [pendingCount, isOnline, syncPendingScans]);
+
+
+  // --- Scanner Logic ---
   const startScanner = useCallback(async () => {
     if (scannerRef.current) return;
 
@@ -35,15 +126,18 @@ export default function ScannerPage() {
           aspectRatio: 1,
         },
         async (decodedText) => {
-          // Debounce: if we're already processing a scan, ignore
           if (processingRef.current) return;
           processingRef.current = true;
           setProcessing(true);
+
+          const client_scan_id = crypto.randomUUID();
+          const device_scanned_at = new Date().toISOString();
 
           try {
             const res = await api.post('/checkin', {
               qr_token: decodedText,
               station_id: STATION_ID,
+              client_scan_id
             });
 
             const checkedInAt = new Date(res.data.checked_in_at).toLocaleTimeString(
@@ -60,52 +154,70 @@ export default function ScannerPage() {
               },
             });
           } catch (err) {
-            const status = err.response?.status;
-            const body = err.response?.data;
+            // Check if it's a network error (no response)
+            if (!err.response) {
+              // Network error - Queue it
+              const pendingScan = {
+                client_scan_id,
+                qr_token: decodedText,
+                station_id: STATION_ID,
+                device_scanned_at
+              };
+              
+              await update(IDB_KEY_PENDING, (old = []) => [...old, pendingScan]);
+              setPendingCount(prev => prev + 1);
 
-            if (status === 409 && body?.error === 'Already checked in') {
-              const checkedInAt = body.checked_in_at
-                ? new Date(body.checked_in_at).toLocaleTimeString('en-US', {
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true,
-                  })
-                : 'unknown time';
+              setScanResult({
+                type: 'queued',
+                data: { message: 'Network offline. Scan queued for sync.' }
+              });
 
-              setScanResult({
-                type: 'duplicate',
-                data: { checkedInAt },
-              });
-            } else if (status === 404) {
-              setScanResult({
-                type: 'invalid',
-                data: { message: 'Invalid QR code' },
-              });
-            } else if (status === 403) {
-              setScanResult({
-                type: 'error',
-                data: {
-                  message:
-                    body?.error || 'You do not have permission to check in attendees for this event',
-                },
-              });
             } else {
-              setScanResult({
-                type: 'error',
-                data: { message: body?.error || 'Check-in failed' },
-              });
+              // Actual server response
+              const status = err.response.status;
+              const body = err.response.data;
+
+              if (status === 409 && body?.error === 'Already checked in') {
+                const checkedInAt = body.checked_in_at
+                  ? new Date(body.checked_in_at).toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
+                    })
+                  : 'unknown time';
+
+                setScanResult({
+                  type: 'duplicate',
+                  data: { checkedInAt },
+                });
+              } else if (status === 404) {
+                setScanResult({
+                  type: 'invalid',
+                  data: { message: 'Invalid QR code' },
+                });
+              } else if (status === 403) {
+                setScanResult({
+                  type: 'error',
+                  data: {
+                    message: body?.error || 'You do not have permission to check in attendees for this event',
+                  },
+                });
+              } else {
+                setScanResult({
+                  type: 'error',
+                  data: { message: body?.error || 'Check-in failed' },
+                });
+              }
             }
           } finally {
             setProcessing(false);
-            // Reset the processing lock after a brief delay to allow
-            // the user to see the result before scanning again
             setTimeout(() => {
               processingRef.current = false;
             }, 2000);
           }
         },
         () => {
-          // QR scan error (no code found in frame) — ignore
+          // Ignore QR read errors
         }
       );
       setCameraReady(true);
@@ -133,7 +245,6 @@ export default function ScannerPage() {
     }
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
@@ -147,9 +258,14 @@ export default function ScannerPage() {
     processingRef.current = false;
   };
 
+  const clearHistory = async () => {
+    await set(IDB_KEY_HISTORY, []);
+    setSyncHistory([]);
+  };
+
   return (
     <div className="page-container max-w-lg mx-auto">
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lg shadow-primary-900/40 mb-4">
           <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
@@ -157,13 +273,29 @@ export default function ScannerPage() {
           </svg>
         </div>
         <h1 className="text-2xl font-bold text-white">QR Check-In Scanner</h1>
-        <p className="text-surface-400 mt-1">
-          Scan attendee QR codes to check them in
-        </p>
+        <div className="flex items-center justify-center gap-2 mt-2">
+          <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`}></span>
+          <span className="text-sm font-medium text-surface-300">
+            {isOnline ? 'Online' : 'Offline Mode'}
+          </span>
+        </div>
         <p className="text-xs text-surface-500 mt-1 font-mono">
           Station: {STATION_ID}
         </p>
       </div>
+      
+      {/* Pending Queue Badge */}
+      {pendingCount > 0 && (
+        <div className="mb-4 bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+            </svg>
+            <span className="text-blue-200 text-sm">{pendingCount} scan(s) queued for sync</span>
+          </div>
+          {isSyncing && <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent" />}
+        </div>
+      )}
 
       {/* Scanner viewport */}
       <div className="card mb-6">
@@ -232,6 +364,22 @@ export default function ScannerPage() {
               </div>
             </div>
           )}
+          
+          {scanResult.type === 'queued' && (
+            <div className="card border-2 border-blue-500/30 bg-blue-500/5" id="checkin-queued">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-blue-300">Queued</h3>
+                  <p className="text-sm text-blue-400/70">{scanResult.data.message}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {scanResult.type === 'duplicate' && (
             <div className="card border-2 border-red-500/30 bg-red-500/5" id="checkin-duplicate">
@@ -294,6 +442,56 @@ export default function ScannerPage() {
           </button>
         </div>
       )}
+
+      {/* Sync History Panel */}
+      {syncHistory.length > 0 && (
+        <div className="card">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-medium text-white">Sync History</h3>
+            <button onClick={clearHistory} className="text-xs text-surface-400 hover:text-white">Clear</button>
+          </div>
+          <div className="space-y-3">
+            {syncHistory.map((item, idx) => (
+              <div 
+                key={item.client_scan_id + idx} 
+                className={`p-3 rounded-lg border ${
+                  item.status === 'synced' || item.status === 'already_synced' 
+                    ? 'bg-emerald-500/5 border-emerald-500/20' 
+                    : item.status === 'conflict'
+                      ? 'bg-amber-500/5 border-amber-500/20'
+                      : 'bg-red-500/5 border-red-500/20'
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className={`text-sm font-medium ${
+                      item.status === 'synced' || item.status === 'already_synced' 
+                        ? 'text-emerald-300' 
+                        : item.status === 'conflict'
+                          ? 'text-amber-300'
+                          : 'text-red-300'
+                    }`}>
+                      {item.status === 'synced' ? 'Synced' : 
+                       item.status === 'already_synced' ? 'Already Synced' :
+                       item.status === 'conflict' ? 'Conflict' : 'Error'}
+                    </span>
+                    {item.status === 'conflict' && (
+                      <p className="text-xs text-amber-400/70 mt-1">
+                        Already checked in at {item.station_id || 'another station'} 
+                        {item.checked_in_at ? ` at ${new Date(item.checked_in_at).toLocaleTimeString()}` : ''}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs text-surface-500 font-mono" title={item.client_scan_id}>
+                    {item.client_scan_id.split('-')[0]}...
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
