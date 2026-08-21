@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState('attendee');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -13,6 +14,12 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!email.toLowerCase().endsWith('@vitstudent.ac.in')) {
+      setError('Please use your VIT student email (@vitstudent.ac.in)');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -51,12 +58,39 @@ export default function LoginPage() {
             {error && <div className="error-message" id="login-error">{error}</div>}
 
             <div>
+              <div className="flex bg-surface-800 p-1 rounded-xl mb-6">
+                <button
+                  type="button"
+                  onClick={() => setRole('attendee')}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    role === 'attendee'
+                      ? 'bg-primary-500 text-white shadow-sm'
+                      : 'text-surface-400 hover:text-surface-200'
+                  }`}
+                >
+                  Attendee
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('organizer')}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    role === 'organizer'
+                      ? 'bg-primary-500 text-white shadow-sm'
+                      : 'text-surface-400 hover:text-surface-200'
+                  }`}
+                >
+                  Organizer
+                </button>
+              </div>
+            </div>
+
+            <div>
               <label htmlFor="login-email" className="label">Email</label>
               <input
                 id="login-email"
                 type="email"
                 className="input"
-                placeholder="you@example.com"
+                placeholder="yourname@vitstudent.ac.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required

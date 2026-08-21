@@ -23,6 +23,7 @@ class User(db.Model):
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum(UserRole), nullable=False)
+    club = db.Column(db.String(100), nullable=True)
     created_at = db.Column(
         db.DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -46,6 +47,7 @@ class User(db.Model):
             "id": self.id,
             "email": self.email,
             "role": self.role.value,
+            "club": self.club,
             "created_at": self.created_at.isoformat(),
         }
 

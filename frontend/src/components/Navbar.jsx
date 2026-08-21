@@ -62,7 +62,9 @@ export default function Navbar() {
             <div className="flex items-center gap-3 ml-4 pl-4 border-l border-surface-700/50">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-surface-200">{user?.email}</p>
-                <p className="text-xs text-surface-400 capitalize">{user?.role}</p>
+                <p className="text-xs text-surface-400 capitalize">
+                  {isOrganizer && user?.club ? `${user.club} Organizer` : user?.role}
+                </p>
               </div>
               <span className={isOrganizer ? 'badge-organizer' : 'badge-attendee'}>
                 {user?.role}

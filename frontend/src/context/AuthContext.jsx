@@ -47,10 +47,11 @@ export function AuthProvider({ children }) {
     return userData;
   }, []);
 
-  const register = useCallback(async (email, password, role, organizerCode) => {
+  const register = useCallback(async (email, password, role, organizerCode, club) => {
     const body = { email, password, role };
-    if (role === 'organizer' && organizerCode) {
-      body.organizer_code = organizerCode;
+    if (role === 'organizer') {
+      if (organizerCode) body.organizer_code = organizerCode;
+      if (club) body.club = club;
     }
     const res = await api.post('/auth/register', body);
     return res.data;

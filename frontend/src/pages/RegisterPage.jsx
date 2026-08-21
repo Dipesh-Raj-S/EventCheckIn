@@ -1,24 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../api';
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('attendee');
   const [organizerCode, setOrganizerCode] = useState('');
+  const [club, setClub] = useState('');
+  const [clubsList, setClubsList] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { register, login } = useAuth();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const fetchClubs = async () => {
+      try {
+        const res = await api.get('/auth/clubs');
+        setClubsList(res.data.clubs || []);
+      } catch (err) {
+        console.error('Failed to fetch clubs', err);
+      }
+    };
+    fetchClubs();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    if (!email.toLowerCase().endsWith('@vitstudent.ac.in')) {
+      setError('Please use your VIT student email (@vitstudent.ac.in)');
+      return;
+    }
+    
+    if (role === 'organizer' && !club) {
+      setError('Please select a club affiliation');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await register(email, password, role, organizerCode);
+      await register(email, password, role, organizerCode, club);
       // Auto-login after registration
       await login(email, password);
       navigate('/events');
@@ -60,7 +86,7 @@ export default function RegisterPage() {
                 id="register-email"
                 type="email"
                 className="input"
-                placeholder="you@example.com"
+                placeholder="yourname@vitstudent.ac.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -121,33 +147,54 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Organizer code field — only shown when "Organize an Event" is selected */}
+            {/* Organizer code and club fields — only shown when "Organize an Event" is selected */}
             {role === 'organizer' && (
-              <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                <label htmlFor="organizer-code" className="label">
-                  Organizer Code
-                  <span className="text-surface-500 font-normal ml-1">(required)</span>
-                </label>
-                <input
-                  id="organizer-code"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{4}"
-                  maxLength={4}
-                  className="input font-mono text-center tracking-[0.5em] text-lg"
-                  placeholder="• • • •"
-                  value={organizerCode}
-                  onChange={(e) => {
-                    // Allow only digits, max 4
-                    const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                    setOrganizerCode(val);
-                  }}
-                  required
-                  autoComplete="off"
-                />
-                <p className="text-xs text-surface-500 mt-1.5">
-                  Enter the 4-digit code provided by your organization
-                </p>
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div>
+                  <label htmlFor="organizer-club" className="label">
+                    Club Affiliation
+                    <span className="text-surface-500 font-normal ml-1">(required)</span>
+                  </label>
+                  <select
+                    id="organizer-club"
+                    className="input bg-surface-800"
+                    value={club}
+                    onChange={(e) => setClub(e.target.value)}
+                    required
+                  >
+                    <option value="" disabled>Select your club...</option>
+                    {clubsList.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="organizer-code" className="label">
+                    Organizer Code
+                    <span className="text-surface-500 font-normal ml-1">(required)</span>
+                  </label>
+                  <input
+                    id="organizer-code"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{4}"
+                    maxLength={4}
+                    className="input font-mono text-center tracking-[0.5em] text-lg"
+                    placeholder="• • • •"
+                    value={organizerCode}
+                    onChange={(e) => {
+                      // Allow only digits, max 4
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setOrganizerCode(val);
+                    }}
+                    required
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-surface-500 mt-1.5">
+                    Enter the 4-digit code provided by your organization
+                  </p>
+                </div>
               </div>
             )}
 

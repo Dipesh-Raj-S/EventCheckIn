@@ -29,6 +29,9 @@ def register():
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
 
+    if not email.endswith("@vitstudent.ac.in"):
+        return jsonify({"error": "Please use your VIT student email (@vitstudent.ac.in)"}), 400
+
     if len(password) < 6:
         return jsonify({"error": "Password must be at least 6 characters"}), 400
 
@@ -40,10 +43,13 @@ def register():
             400,
         )
 
-    # Organizer signup gate — never trust the client role claim without
-    # validating the code server-side. The error message is intentionally
-    # generic to avoid revealing the correct code.
+    club = None
     if role == "organizer":
+        from app.constants import CLUBS
+        club = data.get("club", "").strip()
+        if not club or club not in CLUBS:
+            return jsonify({"error": f"Invalid club. Must be one of the recognized clubs."}), 400
+
         organizer_code = data.get("organizer_code", "")
         expected_code = current_app.config["ORGANIZER_SIGNUP_CODE"]
         if str(organizer_code) != str(expected_code):
@@ -52,13 +58,20 @@ def register():
     if User.query.filter_by(email=email).first():
         return jsonify({"error": "A user with this email already exists"}), 409
 
-    user = User(email=email, role=UserRole(role))
+    user = User(email=email, role=UserRole(role), club=club)
     user.set_password(password)
 
     db.session.add(user)
     db.session.commit()
 
     return jsonify({"message": "User registered successfully", "user": user.to_dict()}), 201
+
+
+@auth_bp.route("/clubs", methods=["GET"])
+def get_clubs():
+    """Return the list of valid clubs."""
+    from app.constants import CLUBS
+    return jsonify({"clubs": CLUBS}), 200
 
 
 @auth_bp.route("/login", methods=["POST"])
