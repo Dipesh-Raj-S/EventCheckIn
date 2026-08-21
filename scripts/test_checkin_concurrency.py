@@ -38,10 +38,12 @@ import time
 import aiohttp
 
 
-async def register_user(session, base_url, email, password, role="attendee", organizer_code=None):
+async def register_user(session, base_url, email, password, role="attendee", organizer_code=None, club=None):
     body = {"email": email, "password": password, "role": role}
     if organizer_code is not None:
         body["organizer_code"] = organizer_code
+    if club is not None:
+        body["club"] = club
     async with session.post(f"{base_url}/api/auth/register", json=body) as resp:
         return await resp.json(), resp.status
 
@@ -78,12 +80,12 @@ async def main(base_url, num_workers):
         # --- Step 1: Create organizer + event ---
         print("[1/5] Setting up organizer + event...")
         ts = int(time.time())
-        org_email = f"org_checkin_{ts}@test.com"
+        org_email = f"org_checkin_{ts}@vitstudent.ac.in"
         org_password = "testpass123"
 
         await register_user(
             session, base_url, org_email, org_password,
-            role="organizer", organizer_code="1309",
+            role="organizer", organizer_code="1309", club="MIC"
         )
         org_token = await login_user(session, base_url, org_email, org_password)
         if not org_token:
@@ -102,7 +104,7 @@ async def main(base_url, num_workers):
 
         # --- Step 2: Create one attendee + register ---
         print("\n[2/5] Creating attendee and registering...")
-        att_email = f"attendee_checkin_{ts}@test.com"
+        att_email = f"attendee_checkin_{ts}@vitstudent.ac.in"
         att_password = "testpass123"
         await register_user(session, base_url, att_email, att_password, role="attendee")
         att_token = await login_user(session, base_url, att_email, att_password)

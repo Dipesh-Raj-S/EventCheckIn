@@ -2,13 +2,14 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from app.decorators import role_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import Event
 
 events_bp = Blueprint("events", __name__, url_prefix="/api/events")
 
 
 @events_bp.route("", methods=["POST"])
+@limiter.limit("20 per minute")
 @role_required("organizer")
 def create_event():
     """Create a new event. Organizer only."""

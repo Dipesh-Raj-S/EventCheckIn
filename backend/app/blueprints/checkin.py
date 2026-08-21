@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.decorators import role_required
-from app.extensions import db, socketio
+from app.extensions import db, socketio, limiter
 from app.models import CheckIn, CheckInConflict, Event, Registration, TokenStatus
 
 checkin_bp = Blueprint("checkin", __name__)
@@ -174,6 +174,7 @@ def _success_response(result):
 # ---------------------------------------------------------------------------
 
 @checkin_bp.route("/api/checkin", methods=["POST"])
+@limiter.limit("60 per minute")
 @role_required("organizer")
 def checkin():
     """
@@ -259,6 +260,7 @@ def checkin():
 # ---------------------------------------------------------------------------
 
 @checkin_bp.route("/api/checkin/sync", methods=["POST"])
+@limiter.limit("30 per minute")
 @role_required("organizer")
 def checkin_sync():
     """
@@ -282,6 +284,8 @@ def checkin_sync():
     scans = data["scans"]
     if not isinstance(scans, list):
         return jsonify({"error": "'scans' must be an array"}), 400
+    if len(scans) > 200:
+        return jsonify({"error": "Payload size limit exceeded: maximum 200 scans per sync request"}), 400
 
     identity = int(get_jwt_identity())
     results = []

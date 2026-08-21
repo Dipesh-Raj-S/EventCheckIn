@@ -7,13 +7,14 @@ from flask_jwt_extended import get_jwt, get_jwt_identity
 from sqlalchemy import text
 
 from app.decorators import role_required
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import Event, Registration, TokenStatus
 
 registrations_bp = Blueprint("registrations", __name__)
 
 
 @registrations_bp.route("/api/events/<int:event_id>/register", methods=["POST"])
+@limiter.limit("10 per minute")
 @role_required("attendee")
 def register_for_event(event_id):
     """
@@ -101,6 +102,7 @@ def register_for_event(event_id):
 
 
 @registrations_bp.route("/api/registrations/me", methods=["GET"])
+@limiter.limit("30 per minute")
 @role_required("attendee")
 def my_registrations():
     """Return the current attendee's own registrations with event info. Attendee only."""

@@ -7,13 +7,14 @@ from flask_jwt_extended import (
     jwt_required,
 )
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import User, UserRole
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
 @auth_bp.route("/register", methods=["POST"])
+@limiter.limit("5 per minute") # Also guards against organizer code brute-forcing
 def register():
     """Register a new user with email, password, and role."""
     data = request.get_json()
@@ -75,6 +76,7 @@ def get_clubs():
 
 
 @auth_bp.route("/login", methods=["POST"])
+@limiter.limit("10 per minute")
 def login():
     """Authenticate user and return access + refresh tokens with role claim."""
     data = request.get_json()

@@ -23,13 +23,28 @@ def create_app(config_name=None):
     )
 
     # Initialize extensions
-    from app.extensions import cors, db, jwt, migrate, socketio
+    from app.extensions import cors, db, jwt, migrate, socketio, limiter
+
+    # Configure limiter storage from environment before initializing
+    storage_uri = app.config.get("RATELIMIT_STORAGE_URI") or os.environ.get("RATELIMIT_STORAGE_URI", "redis://localhost:6379/0")
+    # Must use app.config since limiter.init_app relies on RATELIMIT_STORAGE_URI
+    app.config["RATELIMIT_STORAGE_URI"] = storage_uri
+
 
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
     socketio.init_app(app)
+    limiter.init_app(app)
+
+    # Register rate limit error handler
+    from flask import jsonify
+    from flask_limiter.errors import RateLimitExceeded
+    
+    @app.errorhandler(RateLimitExceeded)
+    def handle_rate_limit_exceeded(e):
+        return jsonify({ "error": "Too many requests, please slow down and try again shortly." }), 429
 
     # Import socket events
     from app import sockets  # noqa: F401

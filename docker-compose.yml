@@ -18,6 +18,12 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   backend:
     build: ./backend
     restart: unless-stopped
@@ -30,9 +36,12 @@ services:
       FLASK_APP: wsgi:app
       ORGANIZER_SIGNUP_CODE: "1309"
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./backend:/app
 

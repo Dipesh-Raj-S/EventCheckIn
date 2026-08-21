@@ -42,6 +42,17 @@ api.interceptors.response.use(
         localStorage.removeItem('user');
         window.location.href = '/login';
       }
+    } else if (error.response?.status === 429) {
+      const msg = error.response.data?.error || "Too many requests. Please slow down.";
+      // Create a basic toast notification in DOM
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-4 right-4 bg-red-500/90 text-white px-6 py-3 rounded-xl shadow-xl z-50 text-sm font-medium transition-opacity';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+          toast.style.opacity = '0';
+          setTimeout(() => document.body.removeChild(toast), 300);
+      }, 3000);
     }
     return Promise.reject(error);
   }
