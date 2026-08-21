@@ -11,3 +11,4 @@ aiohttp==3.11.12
 
 Flask-SocketIO==5.3.6
 simple-websocket==1.0.0
+google-genai>=2.19.0

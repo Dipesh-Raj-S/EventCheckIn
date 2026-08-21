@@ -29,6 +29,7 @@ services:
       FLASK_ENV: development
       FLASK_APP: wsgi:app
       ORGANIZER_SIGNUP_CODE: "1309"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

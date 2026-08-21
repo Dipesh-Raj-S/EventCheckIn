@@ -41,11 +41,13 @@ def create_app(config_name=None):
     from app.blueprints.auth import auth_bp
     from app.blueprints.checkin import checkin_bp
     from app.blueprints.events import events_bp
+    from app.blueprints.insights import insights_bp
     from app.blueprints.registrations import registrations_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(checkin_bp)
     app.register_blueprint(events_bp)
+    app.register_blueprint(insights_bp)
     app.register_blueprint(registrations_bp)
 
     # Health check endpoint

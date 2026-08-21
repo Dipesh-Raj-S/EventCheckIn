@@ -13,6 +13,11 @@ export default function EventDashboardPage() {
   const [error, setError] = useState('');
   const [socketStatus, setSocketStatus] = useState('Connecting');
 
+  // AI Insights state
+  const [insightQuestion, setInsightQuestion] = useState('');
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightHistory, setInsightHistory] = useState([]);
+
   const fetchDashboardData = useCallback(async () => {
     try {
       const res = await api.get(`/events/${id}/dashboard`);
@@ -126,6 +131,35 @@ export default function EventDashboardPage() {
     );
   }
 
+  const handleAskInsight = async (questionOverride) => {
+    const q = (questionOverride || insightQuestion).trim();
+    if (!q) return;
+
+    setInsightLoading(true);
+    try {
+      const res = await api.post(`/events/${id}/insights`, { question: q });
+      setInsightHistory(prev => [
+        { question: q, answer: res.data.answer, stats: res.data.stats, ai_error: res.data.ai_error || false },
+        ...prev,
+      ]);
+    } catch (err) {
+      setInsightHistory(prev => [
+        { question: q, answer: null, stats: null, ai_error: true },
+        ...prev,
+      ]);
+    } finally {
+      setInsightLoading(false);
+      setInsightQuestion('');
+    }
+  };
+
+  const SUGGESTED_QUESTIONS = [
+    'How many people have checked in so far?',
+    'What percentage of registered attendees are no-shows?',
+    'What time did check-ins peak?',
+    'How many spots are left?',
+  ];
+
   const fillPercentage = Math.min(
     100,
     ((event.checked_in_count || 0) / (event.capacity || 1)) * 100
@@ -219,6 +253,110 @@ export default function EventDashboardPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* AI Insights Panel */}
+      <div className="card border-t-4 border-t-violet-500">
+        <div className="flex items-center gap-2 mb-4">
+          <svg className="w-5 h-5 text-violet-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+          </svg>
+          <h3 className="text-lg font-medium text-white">Ask about this event</h3>
+        </div>
+
+        {/* Suggested question chips */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {SUGGESTED_QUESTIONS.map((q, i) => (
+            <button
+              key={i}
+              onClick={() => handleAskInsight(q)}
+              disabled={insightLoading}
+              className="px-3 py-1.5 text-xs rounded-full bg-violet-500/10 text-violet-300 border border-violet-500/20 hover:bg-violet-500/20 hover:text-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+
+        {/* Question input */}
+        <form onSubmit={(e) => { e.preventDefault(); handleAskInsight(); }} className="flex gap-2 mb-6">
+          <input
+            type="text"
+            value={insightQuestion}
+            onChange={(e) => setInsightQuestion(e.target.value)}
+            placeholder="Ask a question about your event..."
+            className="input flex-1"
+            disabled={insightLoading}
+            id="insight-question-input"
+          />
+          <button
+            type="submit"
+            disabled={insightLoading || !insightQuestion.trim()}
+            className="btn-primary px-4 flex items-center gap-2"
+            id="insight-submit-btn"
+          >
+            {insightLoading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+              </svg>
+            )}
+            Ask
+          </button>
+        </form>
+
+        {/* Loading skeleton */}
+        {insightLoading && (
+          <div className="bg-surface-800/50 rounded-lg p-4 mb-4 animate-pulse">
+            <div className="h-3 bg-surface-700 rounded w-3/4 mb-2"></div>
+            <div className="h-3 bg-surface-700 rounded w-1/2"></div>
+          </div>
+        )}
+
+        {/* Conversation history */}
+        {insightHistory.length > 0 && (
+          <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+            {insightHistory.map((item, i) => (
+              <div key={i} className="bg-surface-800/50 rounded-lg p-4">
+                <p className="text-sm text-violet-300 font-medium mb-2 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                  </svg>
+                  {item.question}
+                </p>
+
+                {item.answer ? (
+                  <p className="text-surface-200 text-sm leading-relaxed">{item.answer}</p>
+                ) : item.ai_error && item.stats ? (
+                  <div>
+                    <p className="text-surface-400 text-xs italic mb-3">AI summary unavailable right now — showing raw stats</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-surface-900/50 rounded-lg p-3">
+                        <p className="text-surface-500 text-xs">Checked In</p>
+                        <p className="text-white font-semibold">{item.stats.checked_in_count} / {item.stats.registered_count}</p>
+                      </div>
+                      <div className="bg-surface-900/50 rounded-lg p-3">
+                        <p className="text-surface-500 text-xs">No-Show Rate</p>
+                        <p className="text-white font-semibold">{item.stats.no_show_percentage}%</p>
+                      </div>
+                      <div className="bg-surface-900/50 rounded-lg p-3">
+                        <p className="text-surface-500 text-xs">Peak Check-in</p>
+                        <p className="text-white font-semibold text-xs">{item.stats.peak_checkin_time || 'N/A'}</p>
+                      </div>
+                      <div className="bg-surface-900/50 rounded-lg p-3">
+                        <p className="text-surface-500 text-xs">Spots Left</p>
+                        <p className="text-white font-semibold">{item.stats.spots_left}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-surface-400 text-sm italic">AI summary unavailable right now — please try again later.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
