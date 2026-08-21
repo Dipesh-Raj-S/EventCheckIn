@@ -25,6 +25,7 @@ export default function ScannerPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [syncHistory, setSyncHistory] = useState([]); // Array of { client_scan_id, status, attendee, etc. }
   const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef = useRef(false);
 
   const scannerRef = useRef(null);
   const containerRef = useRef(null);
@@ -54,11 +55,12 @@ export default function ScannerPage() {
   }, []);
 
   const syncPendingScans = useCallback(async () => {
-    if (!isOnline || isSyncing) return;
+    if (!isOnline || isSyncingRef.current) return;
     
     const pending = await get(IDB_KEY_PENDING) || [];
     if (pending.length === 0) return;
 
+    isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       const res = await api.post('/checkin/sync', { scans: pending });
@@ -96,10 +98,15 @@ export default function ScannerPage() {
       
     } catch (err) {
       console.error('Failed to sync offline scans:', err);
+      // If we got a 429, pause sync operations for a few seconds to backoff
+      if (err.response?.status === 429) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [isOnline, isSyncing]);
+  }, [isOnline]); // Removed isSyncing to prevent infinite loop
 
   useEffect(() => {
     if (isOnline) {
@@ -109,12 +116,12 @@ export default function ScannerPage() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      if (pendingCount > 0 && isOnline) {
+      if (isOnline) {
         syncPendingScans();
       }
     }, 15000);
     return () => clearInterval(interval);
-  }, [pendingCount, isOnline, syncPendingScans]);
+  }, [isOnline, syncPendingScans]); // Removed pendingCount to prevent interval thrashing
 
 
   const startScanner = useCallback(async () => {
