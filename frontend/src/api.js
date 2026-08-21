@@ -11,7 +11,7 @@ import axios from 'axios';
  * For this timeline, localStorage is an acceptable tradeoff.
  */
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
