@@ -171,7 +171,7 @@ export default function RegisterPage() {
 
                 <div>
                   <label htmlFor="organizer-code" className="label">
-                    Organizer Code
+                    Organizer Code -1309-
                     <span className="text-surface-500 font-normal ml-1">(required)</span>
                   </label>
                   <input
